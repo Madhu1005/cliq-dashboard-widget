@@ -1,0 +1,1 @@
+# cliq-dashboard-widget
