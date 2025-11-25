@@ -2,7 +2,7 @@
 nixPkgs = ["nodejs_20"]
 
 [phases.install]
-cmds = ["cd cliq-extension && npm ci --omit=dev"]
+cmds = ["cd cliq-extension && npm install --production"]
 
 [phases.build]
 cmds = ["cd cliq-extension && npm run validate || true"]
