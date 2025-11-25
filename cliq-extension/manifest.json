@@ -80,12 +80,6 @@
       "icon": "/assets/reply-icon.png"
     }
   ],
-  "functions": [
-    {
-      "name": "analyzeMessage",
-      "handler": "${WEBHOOK_BASE_URL}/functions/analyze"
-    }
-  ],
   "settings": {
     "fields": [
       {
@@ -124,17 +118,10 @@
     ]
   },
   "security": {
-    "verificationToken": "${ZOHO_VERIFICATION_TOKEN}",
     "allowedOrigins": [
       "https://cliq.zoho.com",
       "https://cliq.zoho.eu",
       "https://cliq.zoho.in"
     ]
-  },
-  "assets": [
-    "/assets/icon.png",
-    "/assets/dashboard-icon.png",
-    "/assets/analyze-icon.png",
-    "/assets/reply-icon.png"
-  ]
+  }
 }

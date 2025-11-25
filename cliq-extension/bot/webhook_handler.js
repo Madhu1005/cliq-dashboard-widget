@@ -139,7 +139,7 @@ class BotWebhookHandler {
     });
 
     // Build response card
-    const card = this._buildAnalysisCard(analysis, message);
+    const card = this._buildAnalysisCard(analysis, message, event);
 
     // Check if stress is high and needs admin alert
     if (analysis.stress_score >= this.stressThreshold) {
@@ -187,7 +187,7 @@ class BotWebhookHandler {
    * Build rich card for analysis results
    * @private
    */
-  _buildAnalysisCard(analysis, originalMessage) {
+  _buildAnalysisCard(analysis, originalMessage, event) {
     // Sentiment emoji mapping
     const sentimentEmoji = {
       positive: '😊',
@@ -262,7 +262,7 @@ class BotWebhookHandler {
             id: 'send_reply_btn',
             data: {
               reply: analysis.suggested_reply,
-              channel_id: event.channel?.id,
+              channel_id: event?.channel?.id,
             },
           },
           {

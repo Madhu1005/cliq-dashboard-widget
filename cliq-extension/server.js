@@ -20,6 +20,8 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
 const { createWebhookHandler } = require('./bot/webhook_handler');
@@ -29,6 +31,37 @@ const APIClient = require('./utils/api_client');
 // Initialize Express app
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Security middleware
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "cdn.jsdelivr.net"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+    },
+  },
+}));
+
+// Rate limiting
+const generalLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 100, // 100 requests per minute
+  message: { text: '⚠️ Too many requests. Please slow down.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const analysisLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 20, // 20 analysis requests per minute
+  message: { text: '⚠️ Analysis rate limit exceeded. Wait 1 minute.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use(generalLimiter);
 
 // Middleware
 // CORS only for widget endpoints, Zoho domains only
@@ -60,7 +93,7 @@ const apiClient = new APIClient();
  * Bot webhook endpoint
  * Handles all incoming messages from Zoho Cliq
  */
-app.post('/bot/webhook', createWebhookHandler());
+app.post('/bot/webhook', analysisLimiter, createWebhookHandler());
 
 /**
  * Slash command: /team-mood
@@ -72,14 +105,29 @@ app.post('/commands/team-mood', createCommandHandler());
  * Message action: Analyze Sentiment
  * Right-click context menu on any message
  */
-app.post('/actions/analyze', async (req, res) => {
+app.post('/actions/analyze', analysisLimiter, async (req, res) => {
   try {
+    // Validate request body
+    if (!req.body || typeof req.body !== 'object') {
+      return res.status(400).json({ text: '⚠️ Invalid request format' });
+    }
+
     const { message, user, channel } = req.body;
     
+    // Validate message exists
+    if (!message || typeof message.text !== 'string' || !message.text.trim()) {
+      return res.status(400).json({ text: '⚠️ No message text provided' });
+    }
+
+    // Validate message length
+    if (message.text.length > 5000) {
+      return res.status(400).json({ text: '⚠️ Message too long (max 5000 chars)' });
+    }
+    
     const analysis = await apiClient.analyzeMessage({
-      message: message?.text || '',
-      user_id: user?.id,
-      channel_id: channel?.id,
+      message: message.text.trim(),
+      user_id: user?.id || 'unknown',
+      channel_id: channel?.id || 'unknown',
     });
 
     res.json({
@@ -108,12 +156,27 @@ app.post('/actions/analyze', async (req, res) => {
  * Message action: Suggest Reply
  * Provides AI-generated empathetic response
  */
-app.post('/actions/suggest-reply', async (req, res) => {
+app.post('/actions/suggest-reply', analysisLimiter, async (req, res) => {
   try {
+    // Validate request body
+    if (!req.body || typeof req.body !== 'object') {
+      return res.status(400).json({ text: '⚠️ Invalid request format' });
+    }
+
     const { message } = req.body;
     
+    // Validate message exists
+    if (!message || typeof message.text !== 'string' || !message.text.trim()) {
+      return res.status(400).json({ text: '⚠️ No message text provided' });
+    }
+
+    // Validate message length
+    if (message.text.length > 5000) {
+      return res.status(400).json({ text: '⚠️ Message too long (max 5000 chars)' });
+    }
+    
     const analysis = await apiClient.analyzeMessage({
-      message: message?.text || '',
+      message: message.text.trim(),
     });
 
     res.json({
@@ -182,20 +245,53 @@ app.get('/widgets/dashboard', (req, res) => {
  * Verifies server and backend connectivity
  */
 app.get('/health', async (req, res) => {
+  const startTime = Date.now();
+  const health = {
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    version: require('./package.json').version,
+    environment: process.env.NODE_ENV || 'development',
+    checks: {}
+  };
+
+  // Check backend connectivity
   try {
+    const backendStart = Date.now();
     const backendHealthy = await apiClient.healthCheck();
-    res.json({
-      status: 'healthy',
-      server: 'ok',
-      backend: backendHealthy ? 'ok' : 'down',
-      timestamp: new Date().toISOString(),
-    });
+    health.checks.backend = {
+      status: backendHealthy ? 'up' : 'down',
+      responseTime: Date.now() - backendStart,
+      url: process.env.BACKEND_API_URL
+    };
+    if (!backendHealthy) health.status = 'degraded';
   } catch (error) {
-    res.status(503).json({
-      status: 'unhealthy',
-      error: error.message,
-    });
+    health.status = 'degraded';
+    health.checks.backend = {
+      status: 'error',
+      error: error.message
+    };
   }
+
+  // Check memory usage
+  const memUsage = process.memoryUsage();
+  health.checks.memory = {
+    status: memUsage.heapUsed < 500 * 1024 * 1024 ? 'ok' : 'warning',
+    heapUsed: `${(memUsage.heapUsed / 1024 / 1024).toFixed(2)} MB`,
+    heapTotal: `${(memUsage.heapTotal / 1024 / 1024).toFixed(2)} MB`
+  };
+
+  // Check configuration
+  health.checks.config = {
+    status: process.env.BACKEND_API_URL && process.env.ZOHO_VERIFICATION_TOKEN ? 'ok' : 'warning',
+    backendConfigured: !!process.env.BACKEND_API_URL,
+    tokenConfigured: !!process.env.ZOHO_VERIFICATION_TOKEN
+  };
+
+  const responseTime = Date.now() - startTime;
+  const statusCode = health.status === 'healthy' ? 200 : 503;
+
+  res.status(statusCode).json({ ...health, responseTime: `${responseTime}ms` });
 });
 
 /**
@@ -257,21 +353,52 @@ async function validateSetup() {
 }
 
 // Start server
-if (require.main === module) {
-  validateSetup().then(() => {
-    app.listen(PORT, () => {
-      console.log('');
-      console.log('🚀 ============================================');
-      console.log(`🤖 Zoho Cliq Extension Server Running`);
-      console.log(`📡 Port: ${PORT}`);
-      console.log(`🔗 Backend: ${process.env.BACKEND_API_URL}`);
-      console.log('🛠️  Endpoints:');
-      console.log(`   - Webhook:  POST http://localhost:${PORT}/bot/webhook`);
-      console.log(`   - Command:  POST http://localhost:${PORT}/commands/team-mood`);
-      console.log(`   - Health:   GET  http://localhost:${PORT}/health`);
-      console.log('============================================');
-      console.log('');
+let server;
+
+async function startServer() {
+  await validateSetup();
+  server = app.listen(PORT, () => {
+    console.log('');
+    console.log('🚀 ============================================');
+    console.log(`🤖 Zoho Cliq Extension Server Running`);
+    console.log(`📡 Port: ${PORT}`);
+    console.log(`🔗 Backend: ${process.env.BACKEND_API_URL}`);
+    console.log('🛠️  Endpoints:');
+    console.log(`   - Webhook:  POST http://localhost:${PORT}/bot/webhook`);
+    console.log(`   - Command:  POST http://localhost:${PORT}/commands/team-mood`);
+    console.log(`   - Health:   GET  http://localhost:${PORT}/health`);
+    console.log('============================================');
+    console.log('');
+  });
+}
+
+// Graceful shutdown handler
+async function gracefulShutdown(signal) {
+  console.log(`\n${signal} received, starting graceful shutdown...`);
+  
+  if (server) {
+    server.close(() => {
+      console.log('HTTP server closed');
+      process.exit(0);
     });
+
+    // Force shutdown after 30s
+    setTimeout(() => {
+      console.error('Forced shutdown after timeout');
+      process.exit(1);
+    }, 30000);
+  } else {
+    process.exit(0);
+  }
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+if (require.main === module) {
+  startServer().catch(err => {
+    console.error('Failed to start server:', err);
+    process.exit(1);
   });
 }
 
