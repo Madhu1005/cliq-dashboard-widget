@@ -21,7 +21,7 @@
       "name": "emo-bot",
       "uniqueName": "emobot",
       "description": "Sentiment analysis bot that analyzes employee messages and provides insights",
-      "webhookUrl": "${WEBHOOK_BASE_URL}/bot/webhook",
+      "webhookUrl": "https://cliq-dashboard-widget-production.up.railway.app/bot/webhook",
       "capabilities": [
         "messageHandler",
         "participantHandler"
@@ -37,7 +37,7 @@
       "name": "/team-mood",
       "description": "Display team mood analytics and trends for today",
       "hint": "Get real-time team sentiment insights",
-      "handler": "${WEBHOOK_BASE_URL}/commands/team-mood",
+      "handler": "https://cliq-dashboard-widget-production.up.railway.app/commands/team-mood",
       "help": {
         "description": "Shows aggregated sentiment data including positive/neutral/negative percentages, top issues, average stress score, and trend indicators.",
         "examples": [
@@ -57,7 +57,7 @@
         "width": "400px",
         "height": "600px"
       },
-      "url": "${WEBHOOK_BASE_URL}/widgets/dashboard",
+      "url": "https://cliq-dashboard-widget-production.up.railway.app/widgets/dashboard",
       "permissions": [
         "channels.read",
         "users.read"
@@ -69,14 +69,14 @@
       "name": "analyze-sentiment",
       "label": "Analyze Sentiment",
       "hint": "Get AI sentiment analysis for this message",
-      "handler": "${WEBHOOK_BASE_URL}/actions/analyze",
+      "handler": "https://cliq-dashboard-widget-production.up.railway.app/actions/analyze",
       "icon": "/assets/analyze-icon.png"
     },
     {
       "name": "suggest-reply",
       "label": "Suggest Reply",
       "hint": "Get AI-suggested empathetic response",
-      "handler": "${WEBHOOK_BASE_URL}/actions/suggest-reply",
+      "handler": "https://cliq-dashboard-widget-production.up.railway.app/actions/suggest-reply",
       "icon": "/assets/reply-icon.png"
     }
   ],
